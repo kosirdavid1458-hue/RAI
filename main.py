@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import numpy as np
 import random
+from collections import deque
 
 # ---------------- WORLD ----------------
 
@@ -35,62 +36,119 @@ def WorldGen(size_x, size_y, seed_id):
 
     return color_map, height_map
 
-
-# ---------------- FOOD ----------------
+# ---------------- ANT ----------------
 
 class Food:
     def __init__(self, x, y):
         self.pos_x = x
         self.pos_y = y
 
-
-# ---------------- ANT ----------------
-
 class Ant:
-
     def __init__(self, height_matrix):
-
         self.height_matrix = height_matrix
-
+        
+        # Nájdenie štartu na súši
         while True:
-            x = random.randint(0, len(height_matrix) - 1)
-            y = random.randint(0, len(height_matrix[0]) - 1)
-
+            x = random.randint(0, len(height_matrix)-1)
+            y = random.randint(0, len(height_matrix[0])-1)
             if height_matrix[x, y] > 0:
                 self.pos_x = x
                 self.pos_y = y
                 break
 
-    def move(self, foods, dead_food):
+        # Globálna pamäť mravca, kde už všade fyzicky stál
+        self.visited = set()
+        self.visited.add((self.pos_x, self.pos_y))
+        
+        # Množina políčok, ktoré mravec "videl" (susedia navštívených), ale ešte na nich nestál
+        self.discovered = set()
+        self._discover_neighbors(self.pos_x, self.pos_y)
+        
+        # Aktuálny plynulý plán cesty (krok za krokom)
+        self.current_path = []
 
-        directions = [(-1,0),(1,0),(0,-1),(0,1)]
-        dx, dy = random.choice(directions)
+    def _discover_neighbors(self, x, y):
+        """Pomocná funkcia: mravec sa poobzerá okolo seba a objaví nové políčka."""
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        for dx, dy in directions:
+            nx, ny = x + dx, y + dy
+            if (
+                0 <= nx < len(self.height_matrix)
+                and 0 <= ny < len(self.height_matrix[0])
+                and self.height_matrix[nx, ny] > 0
+                and (nx, ny) not in self.visited
+            ):
+                self.discovered.add((nx, ny))
 
-        new_x = self.pos_x + dx
-        new_y = self.pos_y + dy
+    def move(self, foods):
+        # 1. Ak mravec nemá plán, kam urobiť ďalší krok, nájde si najbližší nepreskúmaný cieľ
+        if not self.current_path:
+            if not self.discovered:
+                return  # Celý ostrov je kompletne preskúmaný
 
-        # pohyb
-        if (
-            0 <= new_x < len(self.height_matrix)
-            and 0 <= new_y < len(self.height_matrix[0])
-            and self.height_matrix[new_x, new_y] > 0
-        ):
-            self.pos_x = new_x
-            self.pos_y = new_y
+            # Použijeme klasické BFS na nájdenie najkratšej cesty k najbližšiemu 'discovered' políčku
+            # Tento výpočet prebehne okamžite v pamäti a mravcovi dá plynulú trasu krok za krokom
+            path_to_target = self._find_path_to_nearest_unvisited()
+            
+            if path_to_target:
+                self.current_path = path_to_target
+            else:
+                # Ak sa k cieľu nedá dostať (napr. izolovaný ostrov), odstránime ho a skúsime znova
+                self.discovered.clear()
+                return
 
-        # ---------------- EAT FOOD ----------------
+        # 2. FYZICKÝ POHYB: mravec zoberie presne jeden krok z plánu
+        if self.current_path:
+            self.pos_x, self.pos_y = self.current_path.pop(0)
+            self.visited.add((self.pos_x, self.pos_y))
+            self.discovered.discard((self.pos_x, self.pos_y))
+            self._discover_neighbors(self.pos_x, self.pos_y)
+
+        # 3. Kontrola a zber jedla na aktuálnej pozícii
         for i, food in enumerate(foods):
-
             if food.pos_x == self.pos_x and food.pos_y == self.pos_y:
-
                 foods.pop(i)
-                dead_food.append(50)   # cooldown
                 break
 
-
+    def _find_path_to_nearest_unvisited(self):
+        """
+        Klasické BFS, ktoré hľadá najkratšiu cestu z aktuálnej pozície mravca
+        k najbližšiemu políčku z množiny self.discovered, pričom smie chodiť
+        iba po už navštívených políčkach (self.visited) + cieľovom políčku.
+        """
+        start = (self.pos_x, self.pos_y)
+        queue = deque([start])
+        parent = {}
+        local_visited = {start}
+        
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        
+        while queue:
+            curr = queue.popleft()
+            
+            # Ak sme našli políčko, ktoré sme chceli preskúmať, zrekonštruujeme cestu
+            if curr in self.discovered:
+                path = []
+                while curr != start:
+                    path.append(curr)
+                    curr = parent[curr]
+                path.reverse()
+                return path
+                
+            for dx, dy in directions:
+                nx, ny = curr[0] + dx, curr[1] + dy
+                
+                # Mravec smie pri plánovaní cesty stupiť len na miesta, ktoré už pozná (visited)
+                # ALEBO na cieľové nepreskúmané políčko (discovered)
+                if (nx, ny) not in local_visited:
+                    if (nx, ny) in self.visited or (nx, ny) in self.discovered:
+                        local_visited.add((nx, ny))
+                        parent[(nx, ny)] = curr
+                        queue.append((nx, ny))
+        return None
 # ---------------- MAIN ----------------
 
-color_matrix, height_matrix = WorldGen(50, 50, 50)
+color_matrix, height_matrix = WorldGen(35, 35, 50)
 
 foods = []
 dead_food = []
@@ -135,7 +193,7 @@ ax.axis('off')
 
 def update(frame):
 
-    ant.move(foods, dead_food)
+    ant.move(foods)
 
     # ---------------- RESPAWN SYSTEM ----------------
     new_dead = []
@@ -171,7 +229,7 @@ def update(frame):
 ani = animation.FuncAnimation(
     fig,
     update,
-    interval=200,
+    interval=20,
     blit=False,
     cache_frame_data=False
 )
