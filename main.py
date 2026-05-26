@@ -78,6 +78,7 @@ class Ant:
         self.nest_pos = nest_pos
 
         self.carrying_food = False
+        self.food_collected = 0
         self.height_matrix = height_matrix
         
         # Nájdenie štartu v mravenisku
@@ -124,6 +125,8 @@ class Ant:
             if (self.pos_x, self.pos_y) == self.nest_pos:
 
                 self.carrying_food = False
+
+                self.food_collected += 1
 
                 self.current_path = []
 
@@ -275,6 +278,16 @@ ant = Ant(height_matrix, nest_pos)
 
 fig, ax = plt.subplots()
 ax.imshow(color_matrix)
+counter_text = ax.text(
+    nest_pos[1],
+    nest_pos[0],
+    "0",
+    color='black',
+    ha='center',
+    va='center',
+    fontsize=10,
+    fontweight='bold'
+)
 
 food_scatter = ax.scatter(
     [f.pos_y for f in foods],
@@ -332,6 +345,8 @@ def update(frame):
     food_scatter.set_offsets([
         [f.pos_y, f.pos_x] for f in foods
     ])
+
+    counter_text.set_text(str(ant.food_collected))
 
     return ant_plot, food_scatter
 
