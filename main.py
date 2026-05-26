@@ -372,7 +372,7 @@ def update(frame):
 ani = animation.FuncAnimation(
     fig,
     update,
-    interval=20,
+    interval=40,
     blit=False,
     cache_frame_data=False
 )
