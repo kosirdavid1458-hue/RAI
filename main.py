@@ -11,7 +11,6 @@ def WorldGen(size_x, size_y, seed_id):
 
     color_map = np.zeros((size_x, size_y, 3))
     height_map = np.zeros((size_x, size_y))
-
     noise1 = PerlinNoise(octaves=3, seed=seed_id)
     noise2 = PerlinNoise(octaves=6, seed=seed_id)
 
@@ -36,6 +35,37 @@ def WorldGen(size_x, size_y, seed_id):
 
     return color_map, height_map
 
+def GenerateNest(color_map, height_map):
+
+    size_x = len(height_map)
+    size_y = len(height_map[0])
+
+    for i in range(1, size_x - 1):
+        for j in range(1, size_y - 1):
+
+            valid = True
+
+            # kontrola 3x3 okolia
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+
+                    h = height_map[i + dx, j + dy]
+
+                    # musí byť tráva
+                    if not (0.15 <= h < 0.5):
+                        valid = False
+
+            if valid:
+
+                # vykreslenie mraveniska
+                for dx in [-1, 0, 1]:
+                    for dy in [-1, 0, 1]:
+                        color_map[i + dx, j + dy] = (0.5, 0.5, 0.5)
+
+                return (i, j)
+
+    return None
+
 # ---------------- ANT ----------------
 
 class Food:
@@ -44,17 +74,14 @@ class Food:
         self.pos_y = y
 
 class Ant:
-    def __init__(self, height_matrix):
+    def __init__(self, height_matrix, nest_pos):
+        self.nest_pos = nest_pos
+
+        self.carrying_food = False
         self.height_matrix = height_matrix
         
-        # Nájdenie štartu na súši
-        while True:
-            x = random.randint(0, len(height_matrix)-1)
-            y = random.randint(0, len(height_matrix[0])-1)
-            if height_matrix[x, y] > 0:
-                self.pos_x = x
-                self.pos_y = y
-                break
+        # Nájdenie štartu v mravenisku
+        self.pos_x, self.pos_y = nest_pos
 
         # Globálna pamäť mravca, kde už všade fyzicky stál
         self.visited = set()
@@ -81,6 +108,26 @@ class Ant:
                 self.discovered.add((nx, ny))
 
     def move(self, foods):
+                # ---------------- RETURNING HOME ----------------
+
+        if self.carrying_food:
+
+            # ak nemá plán domov, vypočíta ho
+            if not self.current_path:
+                self.current_path = self._find_path_home()
+
+            # krok po kroku ide domov
+            if self.current_path:
+                self.pos_x, self.pos_y = self.current_path.pop(0)
+
+            # prišiel do hniezda
+            if (self.pos_x, self.pos_y) == self.nest_pos:
+
+                self.carrying_food = False
+
+                self.current_path = []
+
+            return
         # 1. Ak mravec nemá plán, kam urobiť ďalší krok, nájde si najbližší nepreskúmaný cieľ
         if not self.current_path:
             if not self.discovered:
@@ -108,6 +155,11 @@ class Ant:
         for i, food in enumerate(foods):
             if food.pos_x == self.pos_x and food.pos_y == self.pos_y:
                 foods.pop(i)
+
+                self.carrying_food = True
+
+                self.current_path = []
+
                 break
 
     def _find_path_to_nearest_unvisited(self):
@@ -145,10 +197,63 @@ class Ant:
                         local_visited.add((nx, ny))
                         parent[(nx, ny)] = curr
                         queue.append((nx, ny))
-        return None
+
+    def _find_path_home(self):
+
+        start = (self.pos_x, self.pos_y)
+
+        goal = self.nest_pos
+
+        queue = deque([start])
+
+        parent = {}
+        local_visited = {start}
+
+        directions = [(-1,0),(1,0),(0,-1),(0,1)]
+
+        while queue:
+
+            curr = queue.popleft()
+
+            if curr == goal:
+
+                path = []
+
+                while curr != start:
+                    path.append(curr)
+                    curr = parent[curr]
+
+                path.reverse()
+                return path
+
+            for dx, dy in directions:
+
+                nx = curr[0] + dx
+                ny = curr[1] + dy
+
+                if (nx, ny) not in local_visited:
+
+                    if (nx, ny) in self.visited:
+
+                        local_visited.add((nx, ny))
+
+                        parent[(nx, ny)] = curr
+
+                        queue.append((nx, ny))
+
+        return []
+    
 # ---------------- MAIN ----------------
 
 color_matrix, height_matrix = WorldGen(35, 35, 50)
+
+nest_pos = GenerateNest(color_matrix, height_matrix)
+
+nest_tiles = set()
+
+for dx in [-1, 0, 1]:
+    for dy in [-1, 0, 1]:
+        nest_tiles.add((nest_pos[0] + dx, nest_pos[1] + dy))
 
 foods = []
 dead_food = []
@@ -160,11 +265,11 @@ for _ in range(100):
         x = random.randint(0, len(height_matrix)-1)
         y = random.randint(0, len(height_matrix[0])-1)
 
-        if height_matrix[x, y] > 0:
+        if height_matrix[x, y] > 0 and (x, y) not in nest_tiles:
             foods.append(Food(x, y))
             break
 
-ant = Ant(height_matrix)
+ant = Ant(height_matrix, nest_pos)
 
 # ---------------- PLOT ----------------
 
@@ -208,7 +313,7 @@ def update(frame):
                 x = random.randint(0, len(height_matrix)-1)
                 y = random.randint(0, len(height_matrix[0])-1)
 
-                if height_matrix[x, y] > 0:
+                if height_matrix[x, y] > 0 and (x, y) not in nest_tiles:
                     foods.append(Food(x, y))
                     break
         else:
@@ -218,6 +323,11 @@ def update(frame):
 
     # ---------------- RENDER ----------------
     ant_plot.set_offsets([[ant.pos_y, ant.pos_x]])
+
+    if ant.carrying_food:
+        ant_plot.set_color('magenta')
+    else:
+        ant_plot.set_color('orange')
 
     food_scatter.set_offsets([
         [f.pos_y, f.pos_x] for f in foods
