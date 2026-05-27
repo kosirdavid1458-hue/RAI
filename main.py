@@ -150,29 +150,24 @@ class Food:
         self.pos_x = x
         self.pos_y = y
 
+# ---------------- ANT ----------------
+
 class Ant:
     def __init__(self, height_matrix, nest_pos, colony_type):
-
         self.nest_pos = nest_pos
         self.colony_type = colony_type
-
         self.carrying_food = False
         self.height_matrix = height_matrix
-        
         self.pos_x, self.pos_y = nest_pos
 
         self.hp = 6
         self.attack = 2
-
         self.combat_lock = 0
         self.ant_id = random.randint(1, 999)
-
-        # Vizuálne spomalenie: koľko frameov musí mravec čakať na aktuálnom políčku
         self.wait_ticks = 0
 
         self.visited = set()
         self.visited.add((self.pos_x, self.pos_y))
-        
         self.discovered = set()
         self._discover_neighbors(self.pos_x, self.pos_y)
         
@@ -181,6 +176,14 @@ class Ant:
                 self.visited.add((nest_pos[0] + dx, nest_pos[1] + dy))
         
         self.current_path = []
+
+        # PRIRADENIE STRATEGIE PODLA TYPU KOLONIE
+        if self.colony_type == "BFS":
+            self.strategy = BfsStrategy()
+        elif self.colony_type == "DFS":
+            self.strategy = BfsStrategy() #zmeniť na DFS po jej pridaní
+        elif self.colony_type == "ASTAR":
+            self.strategy = BfsStrategy() #zmeniť na Astar po jej pridaní
 
     def _discover_neighbors(self, x, y):
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
@@ -202,7 +205,6 @@ class Ant:
         else: return 10         # snow
 
     def move(self, foods):
-        # Ak mravec čaká kvôli náročnému terénu, znížime počítadlo a nepohneme sa
         if self.wait_ticks > 0:
             self.wait_ticks -= 1
             return None
@@ -210,11 +212,11 @@ class Ant:
         # --- Logika pohybu s jedlom ---
         if self.carrying_food:
             if not self.current_path:
-                self.current_path = self._find_path_home()
+                # Volanie strategie pre navrat domov
+                self.current_path = self.strategy.find_path_home(self)
 
             if self.current_path:
                 self.pos_x, self.pos_y = self.current_path.pop(0)
-                # Nastavíme vizuálne spomalenie podľa terénu, na ktorý mravec práve stúpil
                 self.wait_ticks = self.terrain_weight(self.pos_x, self.pos_y) - 1
 
             if (self.pos_x, self.pos_y) == self.nest_pos:
@@ -223,12 +225,13 @@ class Ant:
                 return "DELIVERED"
             return None
 
-        # --- Logika hľadania jedla (prieskum) ---
+        # --- Logika hladania jedla (prieskum) ---
         if not self.current_path:
             if not self.discovered:
                 return
 
-            path_to_target = self._find_path_to_nearest_unvisited()
+            # Volanie strategie pre najblizsie nepreskumane policko
+            path_to_target = self.strategy.find_path_to_unvisited(self)
             
             if path_to_target:
                 self.current_path = path_to_target
@@ -238,35 +241,43 @@ class Ant:
 
         if self.current_path:
             self.pos_x, self.pos_y = self.current_path.pop(0)
-            # Nastavíme vizuálne spomalenie podľa terénu
             self.wait_ticks = self.terrain_weight(self.pos_x, self.pos_y) - 1
             
             self.visited.add((self.pos_x, self.pos_y))
             self.discovered.discard((self.pos_x, self.pos_y))
             self._discover_neighbors(self.pos_x, self.pos_y)
 
-        # Kontrola, či našiel jedlo
+        # Kontrola jedla
         for i, food in enumerate(foods):
             if food.pos_x == self.pos_x and food.pos_y == self.pos_y:
                 foods.pop(i)
                 self.carrying_food = True
                 self.current_path = []
                 break
+    
+# ---------------- PATHFINDING STRATEGIES ----------------
 
-    # ČISTÝ BFS ALGORITMUS PRE PRIESKUM
-    def _find_path_to_nearest_unvisited(self):
-        start = (self.pos_x, self.pos_y)
+class PathfindingStrategy:
+    """Base trieda pre vsetky vyhladavacie algoritmy (Interface)"""
+    def find_path_to_unvisited(self, ant):
+        raise NotImplementedError
+
+    def find_path_home(self, ant):
+        raise NotImplementedError
+
+
+class BfsStrategy(PathfindingStrategy):
+    """Tvoj povodny, plne funkcny BFS algoritmus"""
+    def find_path_to_unvisited(self, ant):
+        start = (ant.pos_x, ant.pos_y)
         queue = deque([start])
-        
         parent = {}
         visited_in_bfs = {start}
-        
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
         
         while queue:
             curr = queue.popleft()
-            
-            if curr in self.discovered:
+            if curr in ant.discovered:
                 path = []
                 while curr != start:
                     path.append(curr)
@@ -277,29 +288,23 @@ class Ant:
             for dx, dy in directions:
                 nx, ny = curr[0] + dx, curr[1] + dy
                 neighbor = (nx, ny)
-                
                 if neighbor not in visited_in_bfs:
-                    if neighbor in self.visited or neighbor in self.discovered:
+                    if neighbor in ant.visited or neighbor in ant.discovered:
                         visited_in_bfs.add(neighbor)
                         parent[neighbor] = curr
                         queue.append(neighbor)
-                        
         return []
 
-    # ČISTÝ BFS ALGORITMUS PRE CESTU DOMOV
-    def _find_path_home(self):
-        start = (self.pos_x, self.pos_y)
-        goal = self.nest_pos
-
+    def find_path_home(self, ant):
+        start = (ant.pos_x, ant.pos_y)
+        goal = ant.nest_pos
         queue = deque([start])
         parent = {}
         visited_in_bfs = {start}
-
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 
         while queue:
             curr = queue.popleft()
-
             if curr == goal:
                 path = []
                 while curr != start:
@@ -311,12 +316,35 @@ class Ant:
             for dx, dy in directions:
                 nx, ny = curr[0] + dx, curr[1] + dy
                 neighbor = (nx, ny)
-
-                if neighbor in self.visited and neighbor not in visited_in_bfs:
+                if neighbor in ant.visited and neighbor not in visited_in_bfs:
                     visited_in_bfs.add(neighbor)
                     parent[neighbor] = curr
                     queue.append(neighbor)
+        return []
 
+
+class DfsStrategy(PathfindingStrategy):
+    """MIESTO PRE KAMARATA 1 (DFS)"""
+    def find_path_to_unvisited(self, ant):
+        # TODO: Sem napisat cisty algorytmus pre DFS prieskum
+        # Mozes vyuzivat: ant.pos_x, ant.pos_y, ant.discovered, ant.visited, ant.height_matrix
+        # Na konci musis vratit zoznam tuplov: [(x1, y1), (x2, y2)...]
+        return []
+
+    def find_path_home(self, ant):
+        # TODO: Sem napisat cisty DFS algoritmus pre cestu domov (ant.nest_pos).
+        return []
+
+
+class AStarStrategy(PathfindingStrategy):
+    """MIESTO PRE KAMARATA 2 (A*)"""
+    def find_path_to_unvisited(self, ant):
+        # TODO: Sem napisat cisty A* algoritmus pre prieskum.
+        # Kedze je to A*, mozes vyuzit aj funkciu ant.terrain_weight(x, y) pre vahy hran
+        return []
+
+    def find_path_home(self, ant):
+        # TODO: Sem napisat cisty A* algoritmus pre cestu domov.
         return []
 
 # ---------------- MAIN ----------------
