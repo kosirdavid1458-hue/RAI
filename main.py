@@ -83,6 +83,28 @@ def GenerateNest(color_map, height_map, existing_nests=[], nest_color=(0.5,0.5,0
 
     return nest
 
+def HandleCombat(ants):
+    for i in range(len(ants)):
+        for j in range(i + 1, len(ants)):
+            ant1 = ants[i]
+            ant2 = ants[j]
+
+            # Ak už je jeden z nich mŕtvy, nemôžu bojovať
+            if ant1.hp <= 0 or ant2.hp <= 0:
+                continue
+
+            if ant1.colony_type != ant2.colony_type:
+                if ant1.combat_lock == 0 and ant2.combat_lock == 0:
+                    if ant1.pos_x == ant2.pos_x and ant1.pos_y == ant2.pos_y:
+                        print(f"FIGHT! {ant1.colony_type}#{ant1.ant_id}(HP:{ant1.hp}) vs {ant2.colony_type}#{ant2.ant_id}(HP:{ant2.hp})")
+
+                        ant1.hp -= ant2.attack
+                        ant2.hp -= ant1.attack
+
+                        # Zvýš LOCK na viac framov (napr. 15), aby mali čas odísť z políčka
+                        ant1.combat_lock = 15
+                        ant2.combat_lock = 15
+
 # ---------------- ANT ----------------
 
 class Food:
@@ -92,12 +114,20 @@ class Food:
 
 class Ant:
     def __init__(self, height_matrix, nest_pos, colony_type):
+
         self.nest_pos = nest_pos
         self.colony_type = colony_type
+
         self.carrying_food = False
         self.height_matrix = height_matrix
         
         self.pos_x, self.pos_y = nest_pos
+
+        self.hp = 6
+        self.attack = 2
+
+        self.combat_lock = 0
+        self.ant_id = random.randint(1, 999)
 
         # Vizuálne spomalenie: koľko frameov musí mravec čakať na aktuálnom políčku
         self.wait_ticks = 0
@@ -253,7 +283,7 @@ class Ant:
 
 # ---------------- MAIN ----------------
 
-color_matrix, height_matrix = WorldGen(45, 45, 50)
+color_matrix, height_matrix = WorldGen(50, 50, random.randint(0,10000))
 
 nests = []
 
@@ -363,6 +393,11 @@ def update(frame):
 
                 spawn_threshold[colony] += 10
 
+    HandleCombat(ants)           
+    for ant in ants:
+        if ant.combat_lock > 0:
+            ant.combat_lock -= 1
+    ants[:] = [ant for ant in ants if ant.hp > 0]
     # Render
     positions = []
     colors = []
