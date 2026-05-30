@@ -6,14 +6,14 @@ import random
 from collections import deque
 import heapq  # POTŘEBNÉ PRO PRIORITNÍ FRONTU V A*
 
-MAP_SIZE = 55
+MAP_SIZE = 60
 
-FOOD_QUANTITY = 150
+FOOD_QUANTITY = 160
 FOOD_RESPAWN = False
 FOOD_RESPAWN_CHANCE = 0.005
 MAX_FOOD = 200
 
-ANIM_SPEED = 10
+ANIM_SPEED = 1
 
 ANT_HP = 6
 ANT_ATTACK = 2
@@ -23,7 +23,7 @@ STARTING_ANTS = 3        # počet mravcov v každej kolónii na začiatku
 SPAWN_AMOUNT = 2         # koľko mravcov sa vytvorí po dosiahnutí prahu
 SPAWN_THRESHOLD_STEP = 10 # každých X jedál sa spawnú noví mravci
 
-SHARE_MEMORY = True
+SHARE_MEMORY = False
 colony_memory = {
     "BFS": {
         "visited": set(),
@@ -292,7 +292,7 @@ class Ant:
 
         if self.current_path:
             self.pos_x, self.pos_y = self.current_path.pop(0)
-            self.wait_ticks = self.terrain_weight(self.pos_x, self.pos_y) - 1
+            #self.wait_ticks = self.terrain_weight(self.pos_x, self.pos_y) - 1 #redundantný riadok
             terrain_cost = self.terrain_weight(self.pos_x, self.pos_y)
 
             self.wait_ticks = terrain_cost - 1
