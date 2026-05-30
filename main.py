@@ -22,6 +22,23 @@ COMBAT_COOLDOWN = 15
 STARTING_ANTS = 3        # počet mravcov v každej kolónii na začiatku
 SPAWN_AMOUNT = 2         # koľko mravcov sa vytvorí po dosiahnutí prahu
 SPAWN_THRESHOLD_STEP = 10 # každých X jedál sa spawnú noví mravci
+
+SHARE_MEMORY = True
+colony_memory = {
+    "BFS": {
+        "visited": set(),
+        "discovered": set()
+    },
+    "DFS": {
+        "visited": set(),
+        "discovered": set()
+    },
+    "ASTAR": {
+        "visited": set(),
+        "discovered": set()
+    }
+}
+
 # ---------------- WORLD ----------------
 
 def WorldGen(size_x, size_y, seed_id):
@@ -179,9 +196,17 @@ class Ant:
         self.ant_id = random.randint(1, 999)
         self.wait_ticks = 0
 
-        self.visited = set()
+        if SHARE_MEMORY:
+
+            self.visited = colony_memory[self.colony_type]["visited"]
+            self.discovered = colony_memory[self.colony_type]["discovered"]
+
+        else:
+
+            self.visited = set()
+            self.discovered = set()
+
         self.visited.add((self.pos_x, self.pos_y))
-        self.discovered = set()
         self._discover_neighbors(self.pos_x, self.pos_y)
 
         self.food_pickup_time = None
@@ -189,7 +214,12 @@ class Ant:
         
         for dx in [-1, 0, 1]:
             for dy in [-1, 0, 1]:
-                self.visited.add((nest_pos[0] + dx, nest_pos[1] + dy))
+                tile = (nest_pos[0] + dx, nest_pos[1] + dy)
+
+                if SHARE_MEMORY:
+                    colony_memory[self.colony_type]["visited"].add(tile)
+                else:
+                    self.visited.add(tile)
         
         self.current_path = []
 
