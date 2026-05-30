@@ -6,11 +6,11 @@ import random
 from collections import deque
 import heapq  # POTŘEBNÉ PRO PRIORITNÍ FRONTU V A*
 
-MAP_SIZE = 60
+MAP_SIZE = 70
 
-FOOD_QUANTITY = 160
+FOOD_QUANTITY = 170
 FOOD_RESPAWN = False
-FOOD_RESPAWN_CHANCE = 0.005
+FOOD_RESPAWN_CHANCE = 0.1
 MAX_FOOD = 200
 
 ANIM_SPEED = 1
@@ -20,7 +20,7 @@ ANT_ATTACK = 2
 COMBAT_COOLDOWN = 15
 
 STARTING_ANTS = 3        # počet mravcov v každej kolónii na začiatku
-SPAWN_AMOUNT = 2         # koľko mravcov sa vytvorí po dosiahnutí prahu
+SPAWN_AMOUNT = 4         # koľko mravcov sa vytvorí po dosiahnutí prahu
 SPAWN_THRESHOLD_STEP = 10 # každých X jedál sa spawnú noví mravci
 
 SHARE_MEMORY = False
@@ -174,6 +174,52 @@ def HandleCombat(ants, foods):
             
             # Nastavíme HP na hlboké mínus, aby sme ho v ďalšom frame (ak by náhodou prežil filter) nezalogovali znova
             ant.hp = -999
+
+def spawn_food():
+    while True:
+        x = random.randint(0, len(height_matrix)-1)
+        y = random.randint(0, len(height_matrix[0])-1)
+
+        occupied = any(
+            food.pos_x == x and food.pos_y == y
+            for food in foods
+        )
+
+        occupied_by_ant = any(
+            ant.pos_x == x and ant.pos_y == y
+            for ant in ants
+        )
+
+        if (
+            height_matrix[x, y] > 0
+            and (x, y) not in nest_tiles
+            and not occupied
+            and not occupied_by_ant
+        ):
+            foods.append(Food(x, y))
+            break
+
+def draw_hp_texts(ax, ants):
+    global hp_texts
+
+    # odstráň staré texty
+    for t in hp_texts:
+        t.remove()
+    hp_texts.clear()
+
+    for ant in ants:
+        txt = ax.text(
+            ant.pos_y,
+            ant.pos_x,
+            str(ant.hp),
+            color="white",
+            fontsize=6,
+            ha="center",
+            va="center",
+            fontweight="bold"
+        )
+        hp_texts.append(txt)
+
 
 # ---------------- ANT ----------------
 
@@ -560,6 +606,7 @@ for _ in range(FOOD_QUANTITY):
             break
 
 ants = []
+hp_texts = []
 
 
 for _ in range(STARTING_ANTS):
@@ -623,30 +670,6 @@ astar_stats_text = fig.text(
 ax.axis('off')
 
 # ---------------- UPDATE ----------------
-def spawn_food():
-    while True:
-        x = random.randint(0, len(height_matrix)-1)
-        y = random.randint(0, len(height_matrix[0])-1)
-
-        occupied = any(
-            food.pos_x == x and food.pos_y == y
-            for food in foods
-        )
-
-        occupied_by_ant = any(
-            ant.pos_x == x and ant.pos_y == y
-            for ant in ants
-        )
-
-        if (
-            height_matrix[x, y] > 0
-            and (x, y) not in nest_tiles
-            and not occupied
-            and not occupied_by_ant
-        ):
-            foods.append(Food(x, y))
-            break
-
 def update(frame):
 
     global food_collected
@@ -732,10 +755,13 @@ def update(frame):
     bfs_text.set_text(str(food_collected["BFS"]))
     dfs_text.set_text(str(food_collected["DFS"]))
     astar_text.set_text(str(food_collected["ASTAR"]))
+    draw_hp_texts(ax, ants)
 
     def colony_report(colony):
 
         s = stats[colony]
+
+        alive = sum(1 for ant in ants if ant.colony_type == colony)
 
         avg_return = (
             sum(s["return_times"]) / len(s["return_times"])
@@ -755,6 +781,7 @@ def update(frame):
 
         return (
             f"{colony}\n"
+            f"Alive ants: {alive}\n"
             f"Food: {s['food_delivered']}\n"
             f"Tiles: {len(s['tiles_discovered'])}\n"
             f"Avg return: {avg_return:.1f}\n"
