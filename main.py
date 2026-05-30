@@ -7,8 +7,21 @@ from collections import deque
 import heapq  # POTŘEBNÉ PRO PRIORITNÍ FRONTU V A*
 
 MAP_SIZE = 55
-FOOD_QUANTITY = 150
 
+FOOD_QUANTITY = 150
+FOOD_RESPAWN = False
+FOOD_RESPAWN_CHANCE = 0.005
+MAX_FOOD = 200
+
+ANIM_SPEED = 10
+
+ANT_HP = 6
+ANT_ATTACK = 2
+COMBAT_COOLDOWN = 15
+
+STARTING_ANTS = 3        # počet mravcov v každej kolónii na začiatku
+SPAWN_AMOUNT = 2         # koľko mravcov sa vytvorí po dosiahnutí prahu
+SPAWN_THRESHOLD_STEP = 10 # každých X jedál sa spawnú noví mravci
 # ---------------- WORLD ----------------
 
 def WorldGen(size_x, size_y, seed_id):
@@ -128,7 +141,7 @@ def HandleCombat(ants, foods):
                             if target.hp <= 0:
                                 stats[ant.colony_type]["kills"] += 1
 
-                            ant.combat_lock = 15
+                            ant.combat_lock = COMBAT_COOLDOWN
 
     # 3. Krok: Správa padlých mravcov (Zaloguje smrť KAŽDÉHO mravca)
     for ant in ants:
@@ -160,8 +173,8 @@ class Ant:
         self.height_matrix = height_matrix
         self.pos_x, self.pos_y = nest_pos
 
-        self.hp = 6
-        self.attack = 2
+        self.hp = ANT_HP
+        self.attack = ANT_ATTACK
         self.combat_lock = 0
         self.ant_id = random.randint(1, 999)
         self.wait_ticks = 0
@@ -503,9 +516,9 @@ stats = {
 }
 
 spawn_threshold = {
-    "BFS": 10,
-    "DFS": 10,
-    "ASTAR": 10
+    "BFS": SPAWN_THRESHOLD_STEP,
+    "DFS": SPAWN_THRESHOLD_STEP,
+    "ASTAR": SPAWN_THRESHOLD_STEP
 }
 
 for _ in range(FOOD_QUANTITY):
@@ -518,9 +531,11 @@ for _ in range(FOOD_QUANTITY):
 
 ants = []
 
-ants.append(Ant(height_matrix, bfs_nest, "BFS"))
-ants.append(Ant(height_matrix, dfs_nest, "DFS"))
-ants.append(Ant(height_matrix, astar_nest, "ASTAR"))
+
+for _ in range(STARTING_ANTS):
+    ants.append(Ant(height_matrix, bfs_nest, "BFS"))
+    ants.append(Ant(height_matrix, dfs_nest, "DFS"))
+    ants.append(Ant(height_matrix, astar_nest, "ASTAR"))
 
 # ---------------- PLOT ----------------
 
@@ -578,10 +593,41 @@ astar_stats_text = fig.text(
 ax.axis('off')
 
 # ---------------- UPDATE ----------------
+def spawn_food():
+    while True:
+        x = random.randint(0, len(height_matrix)-1)
+        y = random.randint(0, len(height_matrix[0])-1)
+
+        occupied = any(
+            food.pos_x == x and food.pos_y == y
+            for food in foods
+        )
+
+        occupied_by_ant = any(
+            ant.pos_x == x and ant.pos_y == y
+            for ant in ants
+        )
+
+        if (
+            height_matrix[x, y] > 0
+            and (x, y) not in nest_tiles
+            and not occupied
+            and not occupied_by_ant
+        ):
+            foods.append(Food(x, y))
+            break
 
 def update(frame):
+
     global food_collected
     global spawn_threshold
+
+    if (
+        FOOD_RESPAWN
+        and len(foods) < MAX_FOOD
+        and random.random() < FOOD_RESPAWN_CHANCE
+    ):
+        spawn_food()
 
     for ant in ants:
         result = ant.move(foods, frame)
@@ -612,9 +658,10 @@ def update(frame):
                 else:
                     nest = astar_nest
 
-                ants.append(Ant(height_matrix, nest, colony))
-                
-                spawn_threshold[colony] += 10
+                for _ in range(SPAWN_AMOUNT):
+                    ants.append(Ant(height_matrix, nest, colony))
+
+                spawn_threshold[colony] += SPAWN_THRESHOLD_STEP
 
     HandleCombat(ants, foods)           
     for ant in ants:
@@ -695,7 +742,7 @@ def update(frame):
     return ant_plot, food_scatter
 
 ani = animation.FuncAnimation(
-    fig, update, interval=10, blit=False, cache_frame_data=False
+    fig, update, interval=ANIM_SPEED, blit=False, cache_frame_data=False
 )
 
 plt.show()
