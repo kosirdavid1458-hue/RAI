@@ -282,7 +282,7 @@ class Ant:
         if self.colony_type == "BFS":
             self.strategy = BfsStrategy()
         elif self.colony_type == "DFS":
-            self.strategy = BfsStrategy() # zmeniť na DFS po jej pridaní
+            self.strategy = DfsStrategy() # změněný DFS
         elif self.colony_type == "ASTAR":
             self.strategy = AStarStrategy() # ZMENENÉ NA ASTARSTRATEGY
 
@@ -552,15 +552,67 @@ class BfsStrategy(PathfindingStrategy):
 class DfsStrategy(PathfindingStrategy):
     """MIESTO PRE KAMARATA 1 (DFS)"""
     def find_path_to_unvisited(self, ant):
-        # TODO: Sem napisat cisty algorytmus pre DFS prieskum
-        # Mozes vyuzivat: ant.pos_x, ant.pos_y, ant.discovered, ant.visited, ant.height_matrix
-        # Na konci musis vratit zoznam tuplov: [(x1, y1), (x2, y2)...]
+        start = (ant.pos_x, ant.pos_y)
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        
+        # --- 1. PRIECHOD: Prioritne hľadáme NEZAREZERVOVANÉ políčko ---
+        stack = [start]  # Stack
+        parent = {}
+        visited_in_dfs = {start}
+        
+        while stack:
+            curr = stack.pop()  
+            if curr in ant.discovered and curr not in ant.targeted:
+                path = []
+                while curr != start:
+                    path.append(curr)
+                    curr = parent[curr]
+                path.reverse()
+                return path
+                
+            for dx, dy in directions:
+                nx, ny = curr[0] + dx, curr[1] + dy
+                neighbor = (nx, ny)
+                if (
+                    0 <= nx < len(ant.height_matrix) 
+                    and 0 <= ny < len(ant.height_matrix[0])
+                    and neighbor not in visited_in_dfs
+                    and ant.height_matrix[nx, ny] > 0
+                ):
+                    visited_in_dfs.add(neighbor)
+                    parent[neighbor] = curr
+                    stack.append(neighbor)
+                        
+        # --- 2. PRIECHOD (Fallback): Ak sú už všetky zarezervované, vezme prvé dostupné ---
+        stack = [start]
+        parent = {}
+        visited_in_dfs = {start}
+        
+        while stack:
+            curr = stack.pop()  # ZMĚNA: pop() místo popleft()
+            if curr in ant.discovered:
+                path = []
+                while curr != start:
+                    path.append(curr)
+                    curr = parent[curr]
+                path.reverse()
+                return path
+                
+            for dx, dy in directions:
+                nx, ny = curr[0] + dx, curr[1] + dy
+                neighbor = (nx, ny)
+                if neighbor not in visited_in_dfs:
+                    if neighbor in ant.visited or neighbor in ant.discovered:
+                        visited_in_dfs.add(neighbor)
+                        parent[neighbor] = curr
+                        stack.append(neighbor)
         return []
 
     def find_path_home(self, ant):
-        # TODO: Sem napisat cisty DFS algoritmus pre cestu domov (ant.nest_pos).
-        return []
+        #BFS hledání cesty dom
+        return BfsStrategy().find_path_home(ant)
     def find_path_to_food(self, ant, food):
+        #BFS hledání cesty k jídlu
         return BfsStrategy().find_path_to_food(ant, food)
 
 class AStarStrategy(PathfindingStrategy):
