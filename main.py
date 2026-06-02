@@ -6,6 +6,8 @@ import random
 from collections import deque
 import heapq  # POTŘEBNÉ PRO PRIORITNÍ FRONTU V A*
 
+#koment
+
 MAP_SIZE = 70
 
 FOOD_QUANTITY = 170
